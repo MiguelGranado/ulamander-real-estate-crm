@@ -1,74 +1,127 @@
-# Real Estate CRM — Piattaforma AI per il settore immobiliare
+# Real Estate CRM / AI Platform
 
-> Repository vetrina. Mostra l'architettura e le funzionalità del progetto; il codice
-> sorgente completo è privato. Per una demo dal vivo o l'accesso al repository completo,
-> [contattami](#contatti).
+## Overview
 
-## Il progetto
+A vertical CRM for real estate agencies: lead pipeline, property listings, a multi-agent AI
+chatbot on the public listings site, and multi-tenant infrastructure so the same platform can
+run isolated instances for multiple agencies. Built and maintained by [Miguel
+Granados](https://github.com/MiguelGranado) under [Ulamander](https://ulamander.com).
 
-Piattaforma CRM verticale per agenzie immobiliari, sviluppata da zero: gestione lead e
-pipeline di vendita, schede immobili, agenda/appuntamenti, un chatbot AI che qualifica i
-contatti in tempo reale sul sito pubblico degli annunci, tracking multicanale (email,
-WhatsApp, Telegram) e un livello enterprise multi-tenant che permette di attivare la stessa
-piattaforma per più agenzie clienti in modo isolato.
+This is the public showcase of the project. The complete production codebase is private —
+see [Private Source Code](#private-source-code) below.
 
-Il sistema è in produzione per clienti reali del settore immobiliare in Italia.
+## Problem
 
-## Architettura
+Real estate agencies lose leads between the first contact and the close: slow responses,
+inconsistent follow-up, and no systematic way to tell a browsing visitor apart from a
+motivated buyer.
+
+## Solution
+
+A single platform where the public listings site, the CRM the agents use, and an AI chatbot
+share the same pipeline. The chatbot doesn't just answer questions — it routes the
+conversation to a specialized agent depending on the visitor's inferred profile (exploratory,
+indecisive, urgent, investor, opportunist...), so follow-up matches how that person actually
+buys.
+
+## Key Features
+
+- Lead & pipeline management with stage tracking
+- Property listings (import, valuation, multi-portal publishing)
+- Multi-agent AI chatbot on the public site, with per-profile conversation routing
+- Calendar & appointment booking
+- Email / WhatsApp / Telegram tracking and automations
+- Multi-tenant isolation — each agency ("hacienda") is scoped at the database level
+- Client portal for the agency's own customers
+
+## Architecture
 
 ```
-┌─────────────────────────┐      ┌──────────────────────────┐
-│  Sito pubblico annunci   │      │   Pannello CRM (agenti)   │
-│  React + Vite            │      │   React + Vite            │
-│  chatbot AI integrato    │      │   pipeline, agenda, task   │
-└────────────┬──────────────┘      └────────────┬───────────────┘
-             │                                    │
-             └───────────────┬────────────────────┘
-                              ▼
-                 ┌─────────────────────────┐
-                 │   Backend FastAPI         │
-                 │   agenti AI (LangGraph)    │
-                 │   routing multi-tenant     │
-                 └────────────┬──────────────┘
-                              ▼
-                 ┌─────────────────────────┐
-                 │   PostgreSQL (RLS)         │
-                 └─────────────────────────┘
+Public listings site (React/Vite) ──┐
+                                     ├──► FastAPI backend ──► PostgreSQL (Row Level Security)
+CRM panel (React/Vite) ─────────────┘         │
+                                               └──► AI agents (LangChain/LangGraph)
 ```
 
-## Funzionalità principali
+Two independent frontends talk to one FastAPI backend. Tenant isolation is enforced with
+PostgreSQL Row Level Security, not just at the application layer, so a bug in one code path
+can't leak another agency's data.
 
-- **Gestione lead e pipeline** — dalla prima richiesta alla chiusura, con scoring automatico
-- **Chatbot AI multi-agente** — instrada la conversazione a "personalità" specializzate
-  (esplorativo, indeciso, urgente, investitore...) per qualificare il contatto
-- **Schede immobili** — importazione, valutazione, pubblicazione multi-portale
-- **Agenda e appuntamenti** — sincronizzazione calendario, promemoria automatici
-- **Tracking multicanale** — email (apertura/click), WhatsApp, Telegram, con automazioni
-- **Multi-tenant enterprise** — ogni agenzia cliente ("hacienda") isolata a livello di
-  dominio, branding e dati (Row Level Security su PostgreSQL)
-- **Portale clienti** — area riservata per i clienti finali dell'agenzia
+## AI Layer
 
-## Stack tecnico
+The chatbot is not a single generic assistant. Incoming conversations are routed (see
+`router_service` in the codebase) to one of several behavior-specific agents —
+`exploratory_agent`, `indecisive_agent`, `urgent_agent`, `investor_agent`,
+`opportunist_agent`, `sentiment_agent`, among others — each tuned to how that type of visitor
+actually makes a decision, plus a dedicated `profiling_agent` that classifies the visitor
+early in the conversation. Built with LangChain/LangGraph.
 
-| Livello | Tecnologie |
+- **Input**: a visitor message on the public listings site
+- **Processing**: sentiment/profile classification → routed to the matching specialized agent
+- **Output**: a response tuned to that visitor profile, plus a qualified lead written to the
+  CRM pipeline
+
+## Automation
+
+Email, WhatsApp and Telegram events feed into the same pipeline (tracking opens/clicks,
+notifying agents of hot leads, automated follow-up sequences) instead of living in separate
+tools.
+
+## Technology Stack
+
+| Layer | Technology |
 |---|---|
-| Frontend | React, TypeScript, Vite, TanStack Router, shadcn/ui, Tailwind |
-| Backend | Python, FastAPI, LangChain / LangGraph |
-| Database | PostgreSQL con Row Level Security |
-| Integrazioni | Telegram Bot API, WhatsApp Business API, SMTP/IMAP, Google OAuth |
-| Infrastruttura | Docker, deploy self-hosted con Cloudflare Tunnel |
+| Frontend | React, TypeScript, Vite, TanStack Router |
+| Backend | Python, FastAPI |
+| AI | LangChain, LangGraph |
+| Database | PostgreSQL with Row Level Security |
+| Infra | Docker, self-hosted (Cloudflare Tunnel) |
 
-## Cosa NON è in questo repository
+## Security
 
-Questo repository pubblico contiene solo la descrizione del progetto, non il codice. Il
-codice sorgente (backend + frontend completi) è mantenuto in un repository privato.
+- PostgreSQL Row Level Security for tenant isolation (not application-level filtering alone)
+- JWT-based authentication
+- Secrets/config kept out of source (`.env`, never committed)
 
-## Contatti
+## Data / Database
 
-Sviluppato e mantenuto da **Miguel Granados** — Ulamander Corporation.
+PostgreSQL. Each agency's data (leads, properties, conversations) is scoped by tenant at the
+row level, enforced by the database itself.
 
-- Sito: [ulamander.com](https://ulamander.com)
-- GitHub: [@MiguelGranado](https://github.com/MiguelGranado)
+## Deployment
 
-Se vuoi una demo dal vivo, discutere una collaborazione o richiedere l'accesso al codice
-completo, scrivimi.
+Docker containers, self-hosted infrastructure with Cloudflare Tunnel for public ingress.
+
+## Public Demo
+
+The platform is live for a real estate agency client in Italy. Reach out for a walkthrough —
+the production tenant isn't opened to anonymous visitors.
+
+## Technical Highlights
+
+- Multi-agent conversation routing instead of one generic chatbot
+- Database-enforced multi-tenancy (RLS), not just app-level tenant filtering
+- Two independently deployable frontends (public site + agent panel) sharing one backend
+
+## Repository Structure
+
+```
+backend/    FastAPI app, AI agents, routers, business logic
+frontend/
+  crm-panel/               agent-facing CRM (React + Vite)
+  aura-property-ai-main/   public listings site + chatbot (React + Vite)
+```
+
+## Private Source Code
+
+This repository is a technical showcase — architecture, structure and selected pieces of the
+real implementation, sanitized of any credentials or tenant-specific data. The complete,
+production codebase (all routers, full agent implementations, deployment configs) stays in a
+private repository. Some parts of the platform referenced here (billing, multi-tenant admin
+console) belong to a separate internal module and aren't part of this showcase.
+
+## Contact
+
+- GitHub: [github.com/MiguelGranado](https://github.com/MiguelGranado)
+- Portfolio: [miguel.ulamander.com](https://miguel.ulamander.com)
+- Live product: [inmobiliaria.ulamander.com](https://inmobiliaria.ulamander.com)
